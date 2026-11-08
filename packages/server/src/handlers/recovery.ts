@@ -5,16 +5,13 @@
 // handlers require callers to have already confirmed at the UI layer —
 // no auto-confirm in the sidecar.
 
-import { execFile } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
-import { promisify } from "node:util"
 import { buildEnv, getBdPath } from "../lib/bd"
+import { execFileAsync } from "../lib/exec"
 import { isValidDbPath } from "../lib/path-validation"
 import { findWorkspaceByDbPath, getBeadboxRegistryPath, getServerOwnership, type WorkspaceRegistry } from "../lib/workspace-registry"
-
-const execFileAsync = promisify(execFile)
 
 // Pre-approved commands that the recovery UI is allowed to execute.
 // Maps the user-facing command string to the actual bd CLI argument array.

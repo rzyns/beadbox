@@ -57,7 +57,7 @@ export async function openInFileManager(
   }
 
   return new Promise((resolve) => {
-    execFile(command, [resolved], (error) => {
+    execFile(command, [resolved], { windowsHide: true }, (error) => {
       // explorer.exe returns exit code 1 even on success; only treat
       // ENOENT (command not found) as a real failure.
       if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {

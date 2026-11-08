@@ -116,7 +116,14 @@ echo "[copy-sidecar] outfile:     $OUTFILE"
 # `bun --cwd <path> build`: with --cwd set, bun resolves `build` as a
 # package.json script — packages/server's `build` script is
 # `tsc --noEmit`, not the bundler subcommand.)
-bun build --compile \
+WINDOWS_FLAGS=()
+if [[ "$TARGET" == *windows* ]]; then
+  # The Tauri JS plugin spawns the executable with pipes but no no-window flag.
+  # The GUI subsystem prevents a separate console without losing those pipes.
+  WINDOWS_FLAGS+=(--windows-hide-console)
+fi
+
+bun build --compile "${WINDOWS_FLAGS[@]}" \
   --minify \
   --sourcemap=none \
   --target="$BUN_TARGET" \

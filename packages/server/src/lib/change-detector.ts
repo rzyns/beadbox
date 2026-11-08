@@ -263,7 +263,7 @@ function bdServerPoll(dbPath: string): Promise<string> {
   }
 
   return new Promise((resolve, reject) => {
-    execFile("bd", args, { timeout: 10_000, cwd, env }, (err, stdout) => {
+    execFile("bd", args, { timeout: 10_000, cwd, env, windowsHide: true }, (err, stdout) => {
       if (err) return reject(err)
       resolve(stdout.trim())
     })
@@ -819,6 +819,7 @@ function startServerPollChild(state: DetectorState, id: string): void {
   const beadsDir = state.dbPath.startsWith("server://") ? "" : beadsDirOf(state.dbPath)
   const pollArgs = buildPollShellArgs(id, dbArg, resolveBdPath(), timeoutS, activeLogPath() ?? "", beadsDir)
   const child = spawn("/bin/sh", pollArgs, {
+    windowsHide: true,
     stdio: ["pipe", "ignore", "inherit"],
     env,
     cwd,

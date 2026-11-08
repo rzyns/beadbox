@@ -384,6 +384,7 @@ export class ServeManager {
  */
 function spawnServeChild(bdPath: string, tokenDir: string, target: ServeTarget): ChildProcess {
   return spawn("/bin/sh", buildServeShellArgs(bdPath, tokenDir), {
+    windowsHide: true,
     cwd: target.workspaceDir,
     env: serveChildEnv(target),
     stdio: ["pipe", "pipe", "ignore"],

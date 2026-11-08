@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process"
+
 // Sidecar parent-death watcher.
 //
 // Two surfaces in this module:
@@ -111,7 +113,7 @@ export interface ShellWatcherOptions {
  *   - Windows: `powershell -NoProfile -Command "while (Get-Process -Id
  *     PARENT -ErrorAction SilentlyContinue) { Start-Sleep -Seconds N };
  *     Stop-Process -Id MAIN -Force"`. powershell.exe is on Windows's
- *     System32 PATH so Bun.spawn finds it without bundling.
+ *     System32 PATH; windowsHide and WindowStyle keep it invisible.
  *
  * Both survive `bun build --compile` because the shell binaries are
  * OS-provided. Before beadbox-cdi the POSIX path was hard-coded and
@@ -130,9 +132,7 @@ export function startParentDeathWatcherViaShell(opts: ShellWatcherOptions = {}):
   const signal = opts.signal ?? "KILL"
 
   if (parentPid === 1) {
-    process.stderr.write(
-      `[bb-x0il-state] watcher_skipped reason=parent_pid_1 mainPid=${mainPid}\n`,
-    )
+    process.stderr.write(`[bb-x0il-state] watcher_skipped reason=parent_pid_1 mainPid=${mainPid}\n`)
     return () => {}
   }
 
@@ -142,6 +142,8 @@ export function startParentDeathWatcherViaShell(opts: ShellWatcherOptions = {}):
         "powershell",
         "-NoProfile",
         "-NonInteractive",
+        "-WindowStyle",
+        "Hidden",
         "-Command",
         `while (Get-Process -Id ${parentPid} -ErrorAction SilentlyContinue) { Start-Sleep -Seconds ${intervalSec} }; Stop-Process -Id ${mainPid} -Force`,
       ]
@@ -155,8 +157,19 @@ export function startParentDeathWatcherViaShell(opts: ShellWatcherOptions = {}):
       ]
 
   try {
-    const child = Bun.spawn(command, {
-      stdio: ["ignore", "ignore", "ignore"],
+    const child = spawn(command[0], command.slice(1), {
+      stdio: ["ignore", "ignore", "inherit"],
+      windowsHide: true,
+    })
+    child.on("error", (err) => {
+      process.stderr.write(
+        `[bb-x0il-state] watcher_spawn_failed parentPid=${parentPid} mainPid=${mainPid} err=${String(err)}\n`,
+      )
+    })
+    child.on("exit", (code) => {
+      if (code !== null && code !== 0) {
+        process.stderr.write(`[bb-x0il-state] watcher_exited mainPid=${mainPid} code=${code}\n`)
+      }
     })
     process.stderr.write(
       `[bb-x0il-state] watcher_spawned shellPid=${child.pid} parentPid=${parentPid} mainPid=${mainPid} intervalSec=${intervalSec} signal=${signal} platform=${process.platform}\n`,

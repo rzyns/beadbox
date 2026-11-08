@@ -30,6 +30,8 @@ function psNames(pids: number[]): string {
 }
 
 export function captureShutdownSource(): { parentChain: string; beadboxProcs: string } {
+  // ps/pgrep are POSIX diagnostics, not part of the Windows shutdown path.
+  if (process.platform === "win32") return { parentChain: "", beadboxProcs: "" }
   const parentChain = psNames([process.pid, process.ppid])
 
   let pids: number[] = []

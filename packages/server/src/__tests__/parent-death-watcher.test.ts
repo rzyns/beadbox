@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
+import { spawn } from "node:child_process"
 import {
   startParentDeathWatcher,
   startParentDeathWatcherViaShell,
@@ -79,8 +80,8 @@ describe("startParentDeathWatcher", () => {
   })
 })
 
-// bb-x0il: integration tests for the shell-spawn watcher. We can't fake
-// /bin/sh, so each test spawns a real victim child (sleep 30) and asserts
+// bb-x0il: integration tests for the shell-spawn watcher. Each test
+// spawns a real native Bun victim child on every platform and asserts
 // the watcher kills it within a bounded window after the configured
 // "parent" disappears.
 
@@ -102,6 +103,15 @@ async function waitDead(pid: number, budgetMs: number): Promise<boolean> {
   return false
 }
 
+function spawnVictim() {
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+    stdio: "ignore",
+    windowsHide: true,
+  })
+  if (!child.pid) throw new Error("Could not start watcher test process")
+  return { pid: child.pid, kill: () => child.kill() }
+}
+
 describe("startParentDeathWatcherViaShell", () => {
   it("returns no-op when parentPid is 1 (no shell spawned)", () => {
     // Sanity: with parentPid=1 the watcher must not throw or attach a
@@ -112,9 +122,7 @@ describe("startParentDeathWatcherViaShell", () => {
 
   it("kills mainPid when the configured parent does not exist", async () => {
     // Spawn a victim sleep child to play the role of "main".
-    const victim = Bun.spawn(["/bin/sh", "-c", "sleep 30"], {
-      stdio: ["ignore", "ignore", "ignore"],
-    })
+    const victim = spawnVictim()
     expect(victim.pid).toBeGreaterThan(0)
     expect(await isAlive(victim.pid)).toBe(true)
 
@@ -134,9 +142,7 @@ describe("startParentDeathWatcherViaShell", () => {
   }, 8000)
 
   it("does NOT kill mainPid while the configured parent is alive", async () => {
-    const victim = Bun.spawn(["/bin/sh", "-c", "sleep 30"], {
-      stdio: ["ignore", "ignore", "ignore"],
-    })
+    const victim = spawnVictim()
     expect(victim.pid).toBeGreaterThan(0)
 
     // Use the test process's own PID — guaranteed alive for the test duration.
@@ -174,12 +180,8 @@ describe("startParentDeathWatcherViaShell", () => {
     // parent. If stop() had failed, the surviving shell would observe the
     // dead parent within one interval (1s) and kill the victim; asserting the
     // victim is still alive well past that proves stop() did its job.
-    const parent = Bun.spawn(["/bin/sh", "-c", "sleep 30"], {
-      stdio: ["ignore", "ignore", "ignore"],
-    })
-    const victim = Bun.spawn(["/bin/sh", "-c", "sleep 30"], {
-      stdio: ["ignore", "ignore", "ignore"],
-    })
+    const parent = spawnVictim()
+    const victim = spawnVictim()
     expect(parent.pid).toBeGreaterThan(0)
     expect(victim.pid).toBeGreaterThan(0)
 

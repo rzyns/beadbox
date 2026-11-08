@@ -111,11 +111,15 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "pgrep -f with a fixed pattern, pids only (no -l, so no argv printed; beadbox-9j1); no input",
   },
-  "index.ts::shutdown::Bun.spawn": {
+  "index.ts::shutdown::spawn": {
     count: 1,
-    why: "/bin/sh watchdog interpolating only our pid and the Node signal name we received; no client input",
+    why: "/bin/sh or hidden powershell watchdog interpolating only our pid and the Node signal name we received; no client input",
   },
-  "lib/parent-death-watcher.ts::startParentDeathWatcherViaShell::Bun.spawn": {
+  "lib/exec.ts::execFileAsync::executeFile": {
+    count: 1,
+    why: "shared execFile wrapper; argv is passed through from the reviewed call sites, while encoding and hidden-window options are fixed",
+  },
+  "lib/parent-death-watcher.ts::startParentDeathWatcherViaShell::spawn": {
     count: 1,
     why: "/bin/sh or powershell loop interpolating only numeric pids, a numeric interval and a signal name; no client input",
   },
@@ -129,10 +133,7 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
 // even before the walker learns it.
 const SPAWN_TEXT =
   /child_process|["']bun["']|\bBun\b|\bspawn(Sync)?\b|\bexecFile(Sync)?\b|\bexeca\b|cross-spawn|tinyexec|\bzx\b|process\.binding|\brequire\s*\(/
-const BACKSTOP_REVIEWED: Record<string, string> = {
-  "lib/exec.ts":
-    "defines execFileAsync = promisify(execFile) and the PATH it runs with; it calls nothing itself, and its spawner is followed to every call site",
-}
+const BACKSTOP_REVIEWED: Record<string, string> = {}
 
 // ---------------------------------------------------------------------------
 // Walker
@@ -164,7 +165,7 @@ function parse(sources: Sources): Record<string, ts.SourceFile> {
 
 function resolveImport(from: string, spec: string, files: Set<string>): string | null {
   if (!spec.startsWith(".")) return null
-  const base = relative("/", resolve("/", dirname(from), spec))
+  const base = relative("/", resolve("/", dirname(from), spec)).replaceAll("\\", "/")
   for (const candidate of [base, `${base}.ts`, `${base}/index.ts`]) {
     if (files.has(candidate)) return candidate
   }
@@ -340,6 +341,19 @@ function isSpawnerExpr(expr: ts.Expression, b: FileBindings): boolean {
 /** promisify(<spawner>) or <spawner>.bind(...): a new function that spawns. */
 function wrapsSpawner(expr: ts.Expression, b: FileBindings): boolean {
   const e = unwrap(expr)
+  if (ts.isArrowFunction(e) && ts.isCallExpression(e.body)) {
+    return isSpawnerExpr(e.body.expression, b)
+  }
+  if (ts.isArrowFunction(e) && ts.isBlock(e.body) && e.body.statements.length === 1) {
+    const statement = e.body.statements[0]
+    if (
+      ts.isReturnStatement(statement) &&
+      statement.expression &&
+      ts.isCallExpression(statement.expression)
+    ) {
+      return isSpawnerExpr(statement.expression.expression, b)
+    }
+  }
   if (!ts.isCallExpression(e)) return false
   const callee = unwrap(e.expression)
   const isPromisify =
@@ -416,7 +430,9 @@ function serverSources(): Sources {
       return name.endsWith(".ts") && !name.endsWith(".test.ts") ? [path] : []
     })
   if (!existsSync(SRC)) throw new Error(`missing ${SRC}`)
-  return Object.fromEntries(walk(SRC).map((p) => [relative(SRC, p), readFileSync(p, "utf-8")]))
+  return Object.fromEntries(
+    walk(SRC).map((p) => [relative(SRC, p).replaceAll("\\", "/"), readFileSync(p, "utf-8")]),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +440,25 @@ function serverSources(): Sources {
 // ---------------------------------------------------------------------------
 
 describe("census walker sees every spawner form (so it cannot pass by not looking)", () => {
+  test("follows a hidden-window wrapper through an imported alias", () => {
+    const delegated = census({
+      "lib/exec.ts": [
+        `import { execFile } from "node:child_process"`,
+        `import { promisify } from "node:util"`,
+        `const executeFile = promisify(execFile)`,
+        `export const execFileAsync = (file, args, options) => { return executeFile(file, args, { ...options, windowsHide: true }) }`,
+      ].join("\n"),
+      "handlers/check.ts": [
+        `import { execFileAsync as hidden } from "../lib/exec"`,
+        `function check() { return hidden("bd", ["version"]) }`,
+      ].join("\n"),
+    })
+    expect(Object.keys(delegated).sort()).toEqual([
+      "handlers/check.ts::check::hidden",
+      "lib/exec.ts::execFileAsync::executeFile",
+    ])
+  })
+
   const found = census({
     "lib/exec.ts": [
       `import { execFile as ef } from "node:child_process"`,

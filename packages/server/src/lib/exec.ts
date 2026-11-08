@@ -1,4 +1,4 @@
-import { execFile } from "child_process"
+import { execFile, type ExecFileOptions } from "child_process"
 import { existsSync } from "fs"
 import { homedir } from "os"
 import { delimiter, join } from "path"
@@ -34,5 +34,15 @@ process.env.PATH = appendToolDirs(
   COMMON_TOOL_DIRS.filter((dir) => existsSync(dir)),
 )
 
-export const execFileAsync = promisify(execFile)
+const executeFile = promisify(execFile)
+
+// Piped output alone does not stop Windows from creating a console for bd.exe.
+// Keep stdout, stderr, timeouts and nonzero exit errors while hiding that console.
+export const execFileAsync = (
+  file: string,
+  args: readonly string[],
+  options: ExecFileOptions = {},
+) => {
+  return executeFile(file, args, { ...options, encoding: "utf8", windowsHide: true })
+}
 export { existsSync } from "fs"

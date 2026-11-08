@@ -20,6 +20,7 @@
 // other module body runs (notably lib/bd.ts which logs at top level during
 // credential hydration). See that file for the rationale.
 import "./lib/console-discipline"
+import { spawn } from "node:child_process"
 import { BunIo, RPCChannel } from "kkrpc"
 import { type HandlerRegistry, handlers } from "./handlers"
 import { closeLogFile } from "./lib/log-file"
@@ -93,20 +94,34 @@ function shutdown(signal: NodeJS.Signals): void {
   // bb-0vlu: shell-spawn watchdog. Bun's setTimeout is unreliable while
   // the main event loop is blocked (BunIo stdin reader, kkrpc message in
   // flight, or a hanging cleanup step below). Same problem bb-6x9y solved
-  // for the parent-death watcher: spawn /bin/sh which has its own
+  // for the parent-death watcher: spawn /bin/sh (hidden PowerShell on Windows) with its own
   // independent scheduler. The shell child sleeps 2s then SIGKILLs us;
   // if process.exit(0) succeeds first, the kill -KILL on our (now-gone)
   // pid is a silent no-op. stderr inherits ours so the escalation line
   // lands in bb-pnk0's tee + tauri-plugin-js's onStderr relay.
   try {
-    Bun.spawn(
-      [
-        "/bin/sh",
-        "-c",
-        `sleep 2; printf '[bb-0vlu] shutdown_watchdog_escalating signal=${signal} pid=${process.pid} reason=process_exit_hung\\n' >&2; kill -KILL ${process.pid} 2>/dev/null`,
-      ],
-      { stdio: ["ignore", "ignore", "inherit"] },
-    )
+    const watchdog =
+      process.platform === "win32"
+        ? [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            `Start-Sleep -Seconds 2; Stop-Process -Id ${process.pid} -Force -ErrorAction SilentlyContinue`,
+          ]
+        : [
+            "/bin/sh",
+            "-c",
+            `sleep 2; printf '[bb-0vlu] shutdown_watchdog_escalating signal=${signal} pid=${process.pid} reason=process_exit_hung\\n' >&2; kill -KILL ${process.pid} 2>/dev/null`,
+          ]
+    spawn(watchdog[0], watchdog.slice(1), {
+      stdio: ["ignore", "ignore", "inherit"],
+      windowsHide: true,
+    }).on("error", (err) => {
+      process.stderr.write(`[bb-0vlu] shutdown_watchdog_failed err=${String(err)}\n`)
+    })
   } catch {
     /* spawn failed — non-fatal; we'll rely on process.exit below */
   }
