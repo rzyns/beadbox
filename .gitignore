@@ -29,6 +29,7 @@ CLAUDE.md
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/
+tauri.local.json
 
 # cargo-mutants output (ephemeral mutation-test scratch dirs)
 src-tauri/mutants.out/

@@ -42,9 +42,34 @@ Download packages from [Releases](https://github.com/beadbox/beadbox/releases).
 
 More at [beadbox.app](https://beadbox.app).
 
+### Windows Scoop package (rzyns fork)
+
+```powershell
+scoop bucket add rzyns https://github.com/rzyns/scoop-bucket
+scoop install rzyns/beadbox
+```
+
+Install the Beads CLI (`bd`) and Microsoft Edge WebView2 Runtime before launching.
+Scoop manages updates for this build; its upstream in-app updater is disabled.
+Project databases and app settings remain in their normal locations outside the
+Scoop installation directory.
+
+To build the portable x64 ZIP and SHA256 file, install dependencies with
+`bun install --frozen-lockfile`, then run `pwsh -File scripts/package-windows.ps1`.
+The script builds the frontend and sidecar from source. Publish the files in
+`dist/` to this fork with tag `scoop-v<version>-rzyns.<revision>` (for example,
+`scoop-v0.33.0-rzyns.1`). Increment `-Revision` for another build of the same
+upstream version. These fork tags do not trigger the upstream signing workflow.
+
 ## Build from source
 
 Prerequisites: [Bun](https://bun.sh), [Rust](https://rustup.rs) (stable), Node.js, and the platform prerequisites for [Tauri v2](https://v2.tauri.app/start/prerequisites/).
+
+On Windows, also install Git for Windows with Git Bash. The build hook selects
+Git Bash explicitly so a WSL `bash.exe` on PATH does not use the Linux toolchain.
+Development launches skip optional UPX compression. Release builds use it on
+Linux when installed; Windows sidecars stay uncompressed so their embedded
+Bun server remains executable.
 
 ```sh
 git clone https://github.com/beadbox/beadbox.git

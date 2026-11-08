@@ -1,7 +1,7 @@
 import { execFile } from "child_process"
 import { existsSync } from "fs"
 import { homedir } from "os"
-import { join } from "path"
+import { delimiter, join } from "path"
 import { promisify } from "util"
 
 // Augment process.env.PATH with common tool directories so child processes
@@ -18,12 +18,21 @@ const COMMON_TOOL_DIRS = [
   join(homedir(), ".dolt/bin"),
 ]
 
-const currentPath = process.env.PATH ?? ""
-const currentDirs = new Set(currentPath.split(":").filter(Boolean))
-const missing = COMMON_TOOL_DIRS.filter((d) => !currentDirs.has(d) && existsSync(d))
-if (missing.length > 0) {
-  process.env.PATH = `${currentPath}:${missing.join(":")}`
+export function appendToolDirs(
+  currentPath: string,
+  toolDirs: string[],
+  separator = delimiter,
+): string {
+  const currentDirs = new Set(currentPath.split(separator).filter(Boolean))
+  const missing = toolDirs.filter((dir) => !currentDirs.has(dir))
+  if (missing.length === 0) return currentPath
+  return [currentPath, ...missing].filter(Boolean).join(separator)
 }
+
+process.env.PATH = appendToolDirs(
+  process.env.PATH ?? "",
+  COMMON_TOOL_DIRS.filter((dir) => existsSync(dir)),
+)
 
 export const execFileAsync = promisify(execFile)
 export { existsSync } from "fs"

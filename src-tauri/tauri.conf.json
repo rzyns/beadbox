@@ -4,9 +4,9 @@
   "identifier": "com.nmelo.beadbox",
   "version": "0.33.0",
   "build": {
-    "beforeDevCommand": "bash src-tauri/scripts/copy-sidecar.sh && cd packages/client && bun run dev",
+    "beforeDevCommand": "bun scripts/tauri-before.ts dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "bash src-tauri/scripts/copy-sidecar.sh && cd packages/client && bun run build",
+    "beforeBuildCommand": "bun scripts/tauri-before.ts build",
     "frontendDist": "../packages/client/dist"
   },
   "app": {

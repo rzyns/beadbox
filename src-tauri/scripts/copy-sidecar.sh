@@ -12,6 +12,7 @@
 #   copy-sidecar.sh                                     # detect host triple
 #   copy-sidecar.sh aarch64-apple-darwin                # positional triple (CI)
 #   copy-sidecar.sh --target x86_64-unknown-linux-gnu   # flag form (CI alt)
+#   copy-sidecar.sh --skip-upx                          # fast local dev build
 #
 # Both positional and flag forms are accepted so release.yml's per-platform
 # job invocations don't couple to one syntax (P5.1 / bb-x6lg.1).
@@ -30,9 +31,11 @@ SIDECAR_BASENAME="beadbox-sidecar"
 
 TARGET=""
 FORCE_UPX="0"
+SKIP_UPX="0"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target) TARGET="$2"; shift 2 ;;
+    --skip-upx) SKIP_UPX="1"; shift ;;
     # --force-upx is a defensive escape hatch. Refused on Mach-O below
     # (ADR-2008 addendum 2: UPX-packed Mach-O fails Apple notarization).
     # Exists only so an attempt to bypass that rule fails loudly with
@@ -141,13 +144,16 @@ if [[ "$FORCE_UPX" == "1" && "$TARGET" == *apple-darwin* ]]; then
   exit 2
 fi
 
-# UPX compression on Linux ELF and Windows PE. Expected 55-70% reduction.
+# UPX compression on Linux ELF. Expected 55-70% reduction.
+# Keep Windows PE uncompressed: UPX 5.3.0 on a Bun 1.4.4 compiled sidecar
+# made it start as the bare Bun CLI instead of running the embedded server.
+# The portable ZIP still compresses the executable for distribution.
 # NEVER run UPX on macOS Mach-O: UPX-packed Mach-O binaries fail Apple
 # notarization on shipping releases (TB0.6 size-remediation AC).
 # Using -9 (max compression without LZMA) keeps decompress overhead
 # sub-100ms, comfortably under our 5s smoke-ping budget. --lzma would be
 # smaller but can push cold start past 500ms on constrained runners.
-if [[ "$TARGET" == *linux* || "$TARGET" == *windows* ]]; then
+if [[ "$SKIP_UPX" != "1" && "$TARGET" == *linux* ]]; then
   if command -v upx >/dev/null 2>&1; then
     before=$(wc -c < "$OUTFILE" | tr -d ' ')
     upx -9 --quiet "$OUTFILE"
